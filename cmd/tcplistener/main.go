@@ -9,18 +9,18 @@ import (
 	"strings"
 )
 
-func getLinesChannel(r io.ReadCloser) <-chan string {
+func getLinesChannel(f io.ReadCloser) <-chan string {
 	lines := make(chan string)
 
 	go func() {
 		defer close(lines)
-		defer r.Close()
+		defer f.Close()
 
-		buffer := make([]byte, 8)
 		currentLine := ""
 
 		for {
-			n, err := r.Read(buffer)
+			buffer := make([]byte, 8)
+			n, err := f.Read(buffer)
 			if err == io.EOF {
 				if currentLine != "" {
 					lines <- currentLine
@@ -57,7 +57,6 @@ func main() {
 		log.Fatal(err)
 	}
 	defer listener.Close()
-
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -67,7 +66,7 @@ func main() {
 
 		fmt.Println("connection accepted")
 		for line := range getLinesChannel(conn) {
-			fmt.Println(line)
+			fmt.Printf("read: %s\n", line)
 		}
 		fmt.Println("connection closed")
 	}
