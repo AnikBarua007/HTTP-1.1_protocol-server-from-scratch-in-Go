@@ -32,7 +32,7 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
-		fmt.Printf("message: %s\n", line)
+		fmt.Printf("message: %s\n")
 	}
 
 }

@@ -3,53 +3,53 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+
+	"_http_protocol_1.1/internal/request"
 )
 
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	lines := make(chan string)
-
-	go func() {
-		defer close(lines)
-		defer f.Close()
-
-		currentLine := ""
-
-		for {
-			buffer := make([]byte, 8)
-			n, err := f.Read(buffer)
-			if err == io.EOF {
-				if currentLine != "" {
-					lines <- currentLine
-				}
-				return
-			}
-			if err != nil {
-				log.Println(err)
-				return
-			}
-			if n == 0 {
-				continue
-			}
-
-			parts := strings.Split(string(buffer[:n]), "\n")
-			for i, part := range parts {
-				if i == len(parts)-1 {
-					currentLine += part
-					break
-				}
-				currentLine += part
-				lines <- currentLine
-				currentLine = ""
-			}
-		}
-	}()
-
-	return lines
-}
+//func getLinesChannel(f io.ReadCloser) <-chan string {
+//	lines := make(chan string)
+//
+//	go func() {
+//		defer close(lines)
+//		defer f.Close()
+//
+//		currentLine := ""
+//
+//		for {
+//			buffer := make([]byte, 8)
+//			n, err := f.Read(buffer)
+//			if err == io.EOF {
+//				if currentLine != "" {
+//					lines <- currentLine
+//				}
+//				return
+//			}
+//			if err != nil {
+//				log.Println(err)
+//				return
+//			}
+//			if n == 0 {
+//				continue
+//			}
+//
+//			parts := strings.Split(string(buffer[:n]), "\n")
+//			for i, part := range parts {
+//				if i == len(parts)-1 {
+//					currentLine += part
+//					break
+//				}
+//				currentLine += part
+//				lines <- currentLine
+//				currentLine = ""
+//			}
+//		}
+//	}()
+//
+//	return lines
+//}
 
 // explanations
 // •
@@ -90,9 +90,12 @@ func main() {
 		}
 
 		fmt.Println("connection accepted")
-		for line := range getLinesChannel(conn) {
-			fmt.Printf("read: %s\n", line)
-		}
-		fmt.Println("connection closed")
+		//for line := range getLinesChannel(conn) {
+		//	fmt.Printf("read: %s\n", line)
+		//}
+		//fmt.Println("connection closed")
+		reqLine, err := request.RequestFromReader(conn)
+		fmt.Printf("Request line: \n- Method:%s\n- Target:%s\n- Version: %s\n", reqLine.RequestLine.Method, reqLine.RequestLine.RequestTarget, reqLine.RequestLine.HttpVersion)
+
 	}
 }
