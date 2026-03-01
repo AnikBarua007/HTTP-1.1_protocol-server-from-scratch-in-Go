@@ -24,44 +24,57 @@ type RequestLine struct {
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	//raw, err := io.ReadAll(reader)
+	req := &Request{State: stateInitialized}
+	buffer := make([]byte, 8)
+	buffered := 0
+	bytesRead := 0
+	bytesParsed := 0
 
-	//if err != nil {
-	//	return nil, err
-	//}
+	for req.State != stateDone {
+		if buffered == len(buffer) {
+			grown := make([]byte, len(buffer)*2)
+			copy(grown, buffer[:buffered])
+			buffer = grown
+		}
 
-	consumed, parts, err := parseRequestLine(raw)
-	if err != nil {
-		return nil, err
-	}
-	if consumed == 0 {
-		return nil, fmt.Errorf("incomplete request line")
-	}
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid request line")
+		n, readErr := reader.Read(buffer[buffered:])
+		if n > 0 {
+			buffered += n
+			bytesRead += n
+		}
+
+		for buffered > 0 {
+			consumed, parseErr := req.parse(buffer[:buffered])
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			if consumed == 0 {
+				break
+			}
+			bytesParsed += consumed
+			copy(buffer, buffer[consumed:buffered])
+			buffered -= consumed
+
+			if bytesRead-bytesParsed != buffered {
+				return nil, fmt.Errorf("internal parser accounting error")
+			}
+			if req.State == stateDone {
+				break
+			}
+		}
+
+		if readErr == io.EOF {
+			if req.State != stateDone {
+				return nil, fmt.Errorf("incomplete request line")
+			}
+			break
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
 	}
 
-	method := parts[0]
-	target := parts[1]
-	version := parts[2]
-
-	if method != strings.ToUpper(method) {
-		return nil, fmt.Errorf("invalid method: %s", method)
-	}
-	if version != "1.1" {
-		return nil, fmt.Errorf("unsupported http version: %s", version)
-	}
-	if !strings.HasPrefix(target, "/") {
-		return nil, fmt.Errorf("invalid request target: %s", target)
-	}
-
-	return &Request{
-		RequestLine: RequestLine{
-			Method:        method,
-			RequestTarget: target,
-			HttpVersion:   version,
-		},
-	}, nil
+	return req, nil
 }
 
 func parseRequestLine(line []byte) (int, []string, error) {

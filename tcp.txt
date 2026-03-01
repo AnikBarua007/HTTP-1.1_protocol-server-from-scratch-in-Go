@@ -1,0 +1,4 @@
+connection accepted
+first line
+second line
+connection closed
