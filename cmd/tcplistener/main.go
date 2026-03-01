@@ -51,6 +51,31 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 	return lines
 }
 
+// explanations
+// •
+// lines := make(chan string) creates an unbuffered channel of lines.
+// •
+// The function starts a goroutine so reading/parsing happens asynchronously.
+// •
+// The function immediately returns the receive-only channel (<-chan string) to the caller.
+// •
+// Inside the goroutine, file bytes are read in chunks (8 bytes each), accumulated into currentLine, and split on \n.
+// •
+// Every complete line is sent with lines <- currentLine.
+// •
+// If EOF is reached and currentLine still has content, it sends that final partial line once.
+// •
+// defer close(lines) closes the channel when done, so consumers can for line := range ch safely terminate.
+// •
+// defer f.Close() ensures the reader is closed when goroutine exits.
+// Concurrency behavior:
+// •
+// Because the channel is unbuffered, each lines <- ... blocks until a receiver reads.
+// •
+// That gives natural backpressure: producer won’t outrun consumer.
+// One caveat:
+// •
+// If input uses \r\n, emitted lines may include trailing \r. You may want strings.TrimSuffix(line, "\r") before sending.
 func main() {
 	listener, err := net.Listen("tcp", ":42069")
 	if err != nil {
