@@ -1,0 +1,20 @@
+accept: */*
+host: localhost:42069
+user-agent: curl/8.15.0
+
+accept: */*
+host: localhost:42069
+user-agent: curl/8.15.0
+
+accept: */*
+host: localhost:42069
+user-agent: curl/8.15.0
+
+accept: */*
+host: localhost:42069
+user-agent: curl/8.15.0
+
+accept: */*
+host: localhost:42069
+user-agent: curl/8.15.0
+

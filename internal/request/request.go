@@ -4,19 +4,24 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"_http_protocol_1.1/internal/headers"
 )
 
 type parserState int
 
 const (
-	stateInitialized parserState = iota
-	stateDone
+	requestStateInitialized parserState = iota
+	requestStateParsingHeaders
+	requestStateDone
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	State       parserState
 }
+
 type RequestLine struct {
 	HttpVersion   string
 	RequestTarget string
@@ -24,48 +29,45 @@ type RequestLine struct {
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	req := &Request{State: stateInitialized}
+	req := &Request{
+		State:   requestStateInitialized,
+		Headers: headers.NewHeaders(),
+	}
+
 	buffer := make([]byte, 8)
-	buffered := 0
+	readToIndex := 0
 	bytesRead := 0
 	bytesParsed := 0
 
-	for req.State != stateDone {
-		if buffered == len(buffer) {
+	for req.State != requestStateDone {
+		if readToIndex == len(buffer) {
 			grown := make([]byte, len(buffer)*2)
-			copy(grown, buffer[:buffered])
+			copy(grown, buffer[:readToIndex])
 			buffer = grown
 		}
 
-		n, readErr := reader.Read(buffer[buffered:])
+		n, readErr := reader.Read(buffer[readToIndex:])
 		if n > 0 {
-			buffered += n
+			readToIndex += n
 			bytesRead += n
 		}
 
-		for buffered > 0 {
-			consumed, parseErr := req.parse(buffer[:buffered])
-			if parseErr != nil {
-				return nil, parseErr
-			}
-			if consumed == 0 {
-				break
-			}
+		consumed, parseErr := req.parse(buffer[:readToIndex])
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		if consumed > 0 {
 			bytesParsed += consumed
-			copy(buffer, buffer[consumed:buffered])
-			buffered -= consumed
-
-			if bytesRead-bytesParsed != buffered {
+			copy(buffer, buffer[consumed:readToIndex])
+			readToIndex -= consumed
+			if bytesRead-bytesParsed != readToIndex {
 				return nil, fmt.Errorf("internal parser accounting error")
-			}
-			if req.State == stateDone {
-				break
 			}
 		}
 
 		if readErr == io.EOF {
-			if req.State != stateDone {
-				return nil, fmt.Errorf("incomplete request line")
+			if req.State != requestStateDone {
+				return nil, fmt.Errorf("incomplete request")
 			}
 			break
 		}
@@ -80,7 +82,6 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 func parseRequestLine(line []byte) (int, []string, error) {
 	idx := strings.Index(string(line), "\r\n")
 	if idx == -1 {
-		// Need more data before a full request line can be parsed.
 		return 0, nil, nil
 	}
 
@@ -89,7 +90,6 @@ func parseRequestLine(line []byte) (int, []string, error) {
 	if len(parts) != 3 {
 		return idx + 2, nil, fmt.Errorf("invalid request line")
 	}
-
 	if !strings.HasPrefix(parts[2], "HTTP/") {
 		return idx + 2, nil, fmt.Errorf("invalid request line")
 	}
@@ -97,9 +97,31 @@ func parseRequestLine(line []byte) (int, []string, error) {
 	parts[2] = strings.TrimPrefix(parts[2], "HTTP/")
 	return idx + 2, parts, nil
 }
+
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+
+	for r.State != requestStateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return totalBytesParsed, err
+		}
+		if n == 0 {
+			return totalBytesParsed, nil
+		}
+
+		totalBytesParsed += n
+		if totalBytesParsed > len(data) {
+			return totalBytesParsed, fmt.Errorf("parsed beyond buffer")
+		}
+	}
+
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.State {
-	case stateInitialized:
+	case requestStateInitialized:
 		consumed, parts, err := parseRequestLine(data)
 		if err != nil {
 			return consumed, err
@@ -130,9 +152,20 @@ func (r *Request) parse(data []byte) (int, error) {
 			RequestTarget: target,
 			Method:        method,
 		}
-		r.State = stateDone
+		r.State = requestStateParsingHeaders
 		return consumed, nil
-	case stateDone:
+
+	case requestStateParsingHeaders:
+		consumed, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return consumed, err
+		}
+		if done {
+			r.State = requestStateDone
+		}
+		return consumed, nil
+
+	case requestStateDone:
 		return 0, fmt.Errorf("error: trying to read data in a done state")
 	default:
 		return 0, fmt.Errorf("error: unknown state")

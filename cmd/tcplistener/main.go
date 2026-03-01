@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"sort"
 
 	"_http_protocol_1.1/internal/request"
 )
@@ -95,7 +97,49 @@ func main() {
 		//}
 		//fmt.Println("connection closed")
 		reqLine, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Println(err)
+			conn.Close()
+			continue
+		}
 		fmt.Printf("Request line: \n- Method:%s\n- Target:%s\n- Version: %s\n", reqLine.RequestLine.Method, reqLine.RequestLine.RequestTarget, reqLine.RequestLine.HttpVersion)
+
+		file, err := os.OpenFile("tmp/headers.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			log.Println(err)
+			conn.Close()
+			continue
+		}
+
+		keys := make([]string, 0, len(reqLine.Headers))
+		for k := range reqLine.Headers {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if _, err := fmt.Fprintf(file, "%s: %s\n", k, reqLine.Headers[k]); err != nil {
+				log.Println(err)
+				break
+			}
+		}
+		if len(keys) > 0 {
+			_, _ = fmt.Fprintln(file)
+		}
+		if err := file.Close(); err != nil {
+			log.Println(err)
+		}
+		body := "received " + reqLine.RequestLine.RequestTarget + "\n"
+		if _, err := fmt.Fprintf(
+			conn,
+			"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s",
+			len(body),
+			body,
+		); err != nil {
+			log.Println(err)
+		}
+		if err := conn.Close(); err != nil {
+			log.Println(err)
+		}
 
 	}
 }
